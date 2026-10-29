@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Complexity Lab: when slow inputs become attacks</title>
+<style>
+:root{--bg:#f4f1ea;--panel:#fffdf8;--ink:#1f2433;--mute:#667085;--line:#ddd6c6;--ind:#4338ca;--indbg:#e5e3fb;--org:#d9480f;--orgbg:#fde6d9;--grn:#1b7f4b;--grnbg:#d9f0e2;--grid:#ebe5d6;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#14161f;--panel:#1c2030;--ink:#eceef6;--mute:#9aa3b8;--line:#33394f;--ind:#9b94ff;--indbg:#2a2868;--org:#ff8a57;--orgbg:#4a2a1a;--grn:#5fd391;--grnbg:#173d2a;--grid:#2a2f44}}
+:root[data-theme="dark"]{--bg:#14161f;--panel:#1c2030;--ink:#eceef6;--mute:#9aa3b8;--line:#33394f;--ind:#9b94ff;--indbg:#2a2868;--org:#ff8a57;--orgbg:#4a2a1a;--grn:#5fd391;--grnbg:#173d2a;--grid:#2a2f44}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 "Source Sans 3","Segoe UI",system-ui,sans-serif}
+main{max-width:940px;margin:0 auto;padding:24px 16px 48px}
+h1{font-size:1.9rem;margin:0 0 4px;letter-spacing:-.02em}
+h2{font-size:1.05rem;margin:0 0 8px}
+p{margin:0 0 10px;max-width:72ch}.sub{color:var(--mute);margin-bottom:16px}.note{font-size:.85rem;color:var(--mute)}
+.tabs{display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap}
+.tabs button{font:inherit;padding:8px 14px;border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:8px;cursor:pointer}
+.tabs button[aria-selected="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:14px}
+.row{display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end}
+label{display:flex;flex-direction:column;gap:3px;font-size:.85rem;color:var(--mute)}
+select{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:6px 8px}
+input[type=range]{width:210px;accent-color:var(--ind)}
+button.sm{font:inherit;font-size:.9rem;padding:6px 12px;border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:6px;cursor:pointer}
+.seg{display:flex;border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.seg button{font:inherit;padding:6px 12px;border:0;background:var(--bg);color:var(--ink);cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--ind);color:var(--bg)}
+:focus-visible{outline:3px solid var(--ind);outline-offset:2px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:14px}@media(max-width:720px){.two{grid-template-columns:1fr}}
+.kv{display:flex;gap:20px;flex-wrap:wrap;margin:8px 0}
+.kv div{font-size:.85rem;color:var(--mute)}.kv b{display:block;color:var(--ink);font:600 1.1rem ui-monospace,Menlo,monospace}
+.msg{border-left:5px solid var(--grn);background:var(--grnbg);padding:10px 12px;border-radius:6px}
+.msg.bad{border-color:var(--org);background:var(--orgbg)}
+svg{width:100%;height:auto;display:block}
+.hide{display:none}
+.leg{display:flex;gap:14px;flex-wrap:wrap;font-size:.85rem;margin-top:4px}.leg i{display:inline-block;width:18px;height:3px;margin-right:5px;vertical-align:middle}
+</style>
+</head>
+<body>
+<main>
+<h1>Complexity Lab</h1>
+<p class="sub">An algorithm that is fast on typical input can be very slow on carefully chosen input. If an attacker controls the input, a small request can make a server do a huge amount of work. Here you will count the work and see where the blow-up comes from. Everything is a simulation: it counts operations rather than measuring real systems.</p>
+
+<div class="tabs" role="tablist">
+  <button role="tab" id="t1" aria-selected="true">1. Hash table collisions</button>
+  <button role="tab" id="t2" aria-selected="false">2. Sorting worst case</button>
+</div>
+
+<!-- TAB 1 -->
+<section id="p1">
+  <div class="panel">
+    <p>A hash table is fast only if keys spread across buckets. This toy table uses chaining: each insert walks the chain in its bucket to check for duplicates. If every key lands in one bucket, n inserts cost about n²/2 comparisons. The "public" hash below is a deliberately simple toy (sum of character codes), so keys that all share a bucket are easy to describe.</p>
+    <div class="row">
+      <label>Number of keys: <b id="nV1"></b><input type="range" id="n1" min="10" max="400" step="10" value="200"></label>
+      <label>Buckets<select id="B"><option>16</option><option selected>32</option><option>64</option></select></label>
+      <label>Key stream<select id="kind"><option value="rand">Ordinary random keys</option><option value="craft">Keys chosen to collide with the toy hash</option></select></label>
+      <label>Hash function<div class="seg"><button id="hF" aria-pressed="true">Fixed public toy hash</button><button id="hK" aria-pressed="false">Keyed with a secret seed</button></div></label>
+      <button class="sm" id="reseed">New secret seed</button>
+    </div>
+  </div>
+  <div class="two">
+    <div class="panel"><h2>Chain length in each bucket</h2><svg id="bars" viewBox="0 0 520 220"></svg><p class="note">Each bar is one bucket. Tall bars mean long chains to walk.</p></div>
+    <div class="panel"><h2>Total comparisons as keys grow</h2><svg id="ch1" viewBox="0 0 520 240"></svg><div class="leg" id="lg1"></div></div>
+  </div>
+  <div class="panel"><div class="kv" id="kv1"></div><div class="msg" id="msg1"></div></div>
+</section>
+
+<!-- TAB 2 -->
+<section id="p2" class="hide">
+  <div class="panel">
+    <p>Quicksort averages about n·log₂n comparisons, but its worst case is about n²/2. Whether you hit the worst case depends on the input order and how the pivot is chosen. An attacker who knows the pivot rule can pick an input that triggers it.</p>
+    <div class="row">
+      <label>Input size n: <b id="nV2"></b><input type="range" id="n2" min="50" max="3000" step="50" value="1000"></label>
+      <label>Input order<select id="ord"><option value="rand">Random</option><option value="sorted" selected>Already sorted</option><option value="rev">Reverse sorted</option><option value="eq">All equal</option></select></label>
+      <label>Pivot rule<select id="piv"><option value="first" selected>First element</option><option value="random">Random element</option><option value="med">Median of three</option></select></label>
+      <label>Y axis<div class="seg"><button id="yL" aria-pressed="true">Linear</button><button id="yG" aria-pressed="false">Log</button></div></label>
+    </div>
+  </div>
+  <div class="two">
+    <div class="panel"><h2>Input preview (sampled)</h2><svg id="prev" viewBox="0 0 520 120"></svg><p class="note">Bar height is the value at each position.</p></div>
+    <div class="panel"><h2>Comparisons vs input size</h2><svg id="ch2" viewBox="0 0 520 240"></svg><div class="leg" id="lg2"></div></div>
+  </div>
+  <div class="panel"><div class="kv" id="kv2"></div><div class="msg" id="msg2"></div></div>
+</section>
+</main>
+
+<script>
+const $=id=>document.getElementById(id);
+const css=v=>'var(--'+v+')';
+function prng(s){return()=>{s|=0;s=s+0x6D2B79F5|0;let t=Math.imul(s^s>>>15,1|s);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+const fN=x=>x>=1e9?(x/1e9).toFixed(1)+'B':x>=1e6?(x/1e6).toFixed(1)+'M':x>=1e3?(x/1e3).toFixed(x>=1e4?0:1)+'k':Math.round(x)+'';
+const fT=s=>s<1e-3?(s*1e6).toFixed(0)+' µs':s<1?(s*1e3).toFixed(1)+' ms':s<120?s.toFixed(1)+' s':s<7200?(s/60).toFixed(0)+' min':(s/3600).toFixed(1)+' hours';
+
+function chart(el,series,xmax,log){
+  const W=520,H=240,L=48,R=10,T=10,Bm=28;
+  const ymax=Math.max(10,...series.flatMap(s=>s.pts.map(p=>p[1])));
+  const ty=y=>log?Math.log10(Math.max(y,1))/Math.log10(ymax):y/ymax;
+  const X=x=>L+(x/xmax)*(W-L-R),Y=y=>H-Bm-ty(y)*(H-Bm-T);
+  let g='';
+  for(let i=0;i<=4;i++){const f=i/4,yy=H-Bm-f*(H-Bm-T),v=log?Math.pow(10,f*Math.log10(ymax)):f*ymax;
+    g+=`<line x1="${L}" x2="${W-R}" y1="${yy}" y2="${yy}" stroke="${css('grid')}"/><text x="${L-5}" y="${yy+4}" text-anchor="end" font-size="10" fill="${css('mute')}">${fN(v)}</text>`}
+  for(let i=0;i<=4;i++){const x=xmax*i/4;g+=`<text x="${X(x)}" y="${H-10}" text-anchor="middle" font-size="10" fill="${css('mute')}">${fN(x)}</text>`}
+  for(const s of series){
+    g+=`<polyline fill="none" stroke="${css(s.c)}" stroke-width="${s.w||2.5}" ${s.d?'stroke-dasharray="5 4"':''} points="${s.pts.map(p=>X(p[0])+','+Y(p[1])).join(' ')}"/>`;
+    if(s.mark)g+=`<circle cx="${X(s.mark[0])}" cy="${Y(s.mark[1])}" r="5" fill="${css(s.c)}" stroke="${css('panel')}" stroke-width="2"/>`;
+  }
+  el.innerHTML=g;
+}
+const legend=(el,items)=>el.innerHTML=items.map(i=>`<span><i style="background:${css(i[0])}"></i>${i[1]}</span>`).join('');
+
+/* ---------- Tab 1 ---------- */
+let useKeyed=false,secret=987654321;
+const toy=(s,B)=>{let t=0;for(let i=0;i<s.length;i++)t+=s.charCodeAt(i);return t%B};
+const keyed=(s,B)=>{let h=(2166136261^secret)>>>0;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619)}h^=h>>>15;return (h>>>0)%B};
+function makeKeys(kind,n,B){
+  const r=prng(kind==='rand'?11:22),out=[];
+  for(let i=0;i<n;i++){
+    let s='';for(let j=0;j<7;j++)s+=String.fromCharCode(97+Math.floor(r()*26));
+    if(kind==='craft'){let sum=0;for(const ch of s)sum+=ch.charCodeAt(0);for(let c=33;c<127;c++)if((sum+c)%B===0){s+=String.fromCharCode(c);break}}
+    else s+=String.fromCharCode(97+Math.floor(r()*26));
+    out.push(s);
+  }
+  return out;
+}
+function insertAll(keys,B){
+  const ch=new Array(B).fill(0);let comps=0;const f=useKeyed?keyed:toy;
+  for(const k of keys){const h=f(k,B);comps+=ch[h];ch[h]++}
+  return{ch,comps};
+}
+function render1(){
+  const n=+$('n1').value,B=+$('B').value,kind=$('kind').value;
+  $('nV1').textContent=n;
+  $('hF').setAttribute('aria-pressed',!useKeyed);$('hK').setAttribute('aria-pressed',useKeyed);
+  const res=insertAll(makeKeys(kind,n,B),B),mx=Math.max(...res.ch);
+  let g='';const bw=520/B;
+  res.ch.forEach((v,i)=>{const h=v/Math.max(mx,1)*190;g+=`<rect x="${i*bw+1}" y="${205-h}" width="${bw-2}" height="${h}" rx="2" fill="${css(v>3*n/B+3?'org':'ind')}"/>`});
+  g+=`<line x1="0" x2="520" y1="206" y2="206" stroke="${css('line')}"/><text x="4" y="218" font-size="10" fill="${css('mute')}">bucket 0 → ${B-1}   (tallest chain: ${mx})</text>`;
+  $('bars').innerHTML=g;
+  const xs=[];for(let x=10;x<=400;x+=10)xs.push(x);
+  const rnd=xs.map(x=>[x,insertAll(makeKeys('rand',x,B),B).comps]),cr=xs.map(x=>[x,insertAll(makeKeys('craft',x,B),B).comps]);
+  const cur=kind==='rand'?rnd:cr;
+  chart($('ch1'),[
+    {pts:xs.map(x=>[x,x*(x-1)/2]),c:'mute',d:1,w:1.5},
+    {pts:rnd,c:'grn'},{pts:cr,c:'org'},
+    {pts:[],c:'ind',mark:[n,res.comps]}],400,false);
+  legend($('lg1'),[['mute','worst case n(n−1)/2'],['grn','random keys'],['org','keys chosen to collide'],['ind','your setting']]);
+  const ideal=Math.round(n*n/(2*B)),us=res.comps*0.001;
+  $('kv1').innerHTML=`<div>Comparisons<b>${fN(res.comps)}</b></div><div>Typical (n²/2B)<b>${fN(ideal)}</b></div><div>Slowdown vs typical<b>×${(res.comps/Math.max(ideal,1)).toFixed(1)}</b></div><div>Time at 1 ns each<b>${fT(res.comps*1e-9)}</b></div>`;
+  const bad=res.comps>3*ideal+20;
+  $('msg1').className='msg'+(bad?' bad':'');
+  $('msg1').innerHTML=bad?`<b>Degraded.</b> Most keys share a few buckets, so the table behaves like one long linked list. Doubling n roughly quadruples the work. A server that accepts attacker-chosen keys could be kept busy by a small request.`:
+   (kind==='craft'&&useKeyed)?`<b>Defense working.</b> The keys were chosen against the public toy hash. With a secret seed the attacker cannot predict buckets, so the same keys spread out like ordinary ones. Press “New secret seed” to confirm it is not luck.`:
+   `<b>Healthy.</b> Keys spread across buckets, so chains stay short and the total work grows slowly.`;
+}
+$('n1').oninput=$('B').onchange=$('kind').onchange=render1;
+$('hF').onclick=()=>{useKeyed=false;render1()};$('hK').onclick=()=>{useKeyed=true;render1()};
+$('reseed').onclick=()=>{secret=Math.floor(Math.random()*4294967295);render1()};
+
+/* ---------- Tab 2 ---------- */
+let logY=false;
+function makeInput(ord,n){
+  const a=Array.from({length:n},(_,i)=>i+1);
+  if(ord==='sorted')return a;if(ord==='rev')return a.reverse();if(ord==='eq')return a.map(()=>5);
+  const r=prng(7);for(let i=n-1;i>0;i--){const j=Math.floor(r()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a;
+}
+function qsort(arr,piv){
+  const a=arr.slice(),r=prng(3);let c=0;const st=[[0,a.length-1]];
+  while(st.length){
+    const[l,h]=st.pop();if(l>=h)continue;
+    let pi=l;
+    if(piv==='random')pi=l+Math.floor(r()*(h-l+1));
+    else if(piv==='med'){const m=(l+h)>>1;pi=[l,m,h].sort((x,y)=>a[x]-a[y])[1]}
+    [a[pi],a[h]]=[a[h],a[pi]];const p=a[h];let i=l;
+    for(let j=l;j<h;j++){c++;if(a[j]<p){[a[i],a[j]]=[a[j],a[i]];i++}}
+    [a[i],a[h]]=[a[h],a[i]];st.push([l,i-1],[i+1,h]);
+  }
+  return c;
+}
+function render2(){
+  const n=+$('n2').value,ord=$('ord').value,piv=$('piv').value;
+  $('nV2').textContent=n;
+  $('yL').setAttribute('aria-pressed',!logY);$('yG').setAttribute('aria-pressed',logY);
+  const inp=makeInput(ord,n),c=qsort(inp,piv);
+  const step=Math.max(1,Math.floor(n/80));let g='';const vals=[];for(let i=0;i<n;i+=step)vals.push(inp[i]);
+  const mxv=Math.max(...inp),bw=520/vals.length;
+  vals.forEach((v,i)=>g+=`<rect x="${i*bw}" y="${115-v/mxv*105}" width="${Math.max(bw-1,1)}" height="${v/mxv*105}" fill="${css('ind')}"/>`);
+  $('prev').innerHTML=g;
+  const xs=[50,100,200,400,800,1200,1600,2000,2500,3000];
+  const mine=xs.map(x=>[x,qsort(makeInput(ord,x),piv)]);
+  chart($('ch2'),[
+    {pts:xs.map(x=>[x,x*x/2]),c:'org',d:1,w:1.5},{pts:xs.map(x=>[x,x*Math.log2(x)]),c:'grn',d:1,w:1.5},
+    {pts:mine,c:'ind'},{pts:[],c:'ind',mark:[n,c]}],3000,logY);
+  legend($('lg2'),[['org','n²/2 (worst case)'],['grn','n·log₂n (typical)'],['ind','your setting']]);
+  const nl=n*Math.log2(n),quad=c>0.25*n*n/2;
+  const big=1e5,est=quad?big*big/2:big*Math.log2(big)*(c/nl);
+  $('kv2').innerHTML=`<div>Comparisons<b>${fN(c)}</b></div><div>n·log₂n<b>${fN(nl)}</b></div><div>Ratio to n·log₂n<b>×${(c/nl).toFixed(1)}</b></div><div>At 100,000 items, 10 ns each<b>${fT(est*1e-8)}</b></div>`;
+  $('msg2').className='msg'+(quad?' bad':'');
+  $('msg2').innerHTML=quad?
+   (ord==='eq'?`<b>Quadratic.</b> With every key equal, this partition scheme puts all elements on one side each time, so even random or median pivots do badly. Defenses include a three-way partition or a different algorithm.`:
+   `<b>Quadratic.</b> The pivot keeps splitting off just one element, so the recursion goes about n levels deep instead of log n. Work grows with n², and one crafted request can cost thousands of times the normal amount.`):
+   `<b>Near n·log n.</b> Splits are reasonably balanced, so the work stays close to the typical curve. ${piv==='first'?'':'The pivot rule defeats the ordering of this input.'}`;
+}
+$('n2').oninput=$('ord').onchange=$('piv').onchange=render2;
+$('yL').onclick=()=>{logY=false;render2()};$('yG').onclick=()=>{logY=true;render2()};
+
+function tab(i){$('p1').classList.toggle('hide',i!==1);$('p2').classList.toggle('hide',i!==2);$('t1').setAttribute('aria-selected',i===1);$('t2').setAttribute('aria-selected',i===2);i===1?render1():render2()}
+$('t1').onclick=()=>tab(1);$('t2').onclick=()=>tab(2);
+render1();
+</script>
+</body>
+</html>
